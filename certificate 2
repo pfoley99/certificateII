@@ -1,0 +1,100 @@
+*** Settings ***
+Documentation  Orders robots from RobotSpareBin Industries Inc.
+...               Saves the order HTML receipt as a PDF file.
+...               Saves the screenshot of the ordered robot.
+...               Embeds the screenshot of the robot to the PDF receipt.
+...              Creates ZIP archive of the receipts and the images.
+Library  RPA.Browser  auto_close=${FALSE}
+Library  RPA.Excel.Files
+Library  RPA.Tables
+Library  RPA.PDF
+Library  RPA.FileSystem
+Library  RPA.HTTP
+
+*** Variables ***
+#${img_folder}=     ${OUTPUT_DIR}${/}image_files
+#${pdf_folder}=     ${OUTPUT_DIR}${/}pdf_files
+#${output_folder}=  ${OUTPUT_DIR}${/}output
+${orders_folder}=    ${OUTPUT_DIR}${/}receipt
+
+*** Keywords ***
+Open the intranet website
+    Open Available Browser  https://robotsparebinindustries.com/#/robot-order
+
+*** Keywords ***
+Bypass Order Form
+    Click Button    OK
+
+***Keywords***
+Dowload Order Files
+    Download  https://robotsparebinindustries.com/orders.csv  overwrite=True
+
+***Keywords***
+Read order Files
+     ${orders}=  Read table from CSV    orders.csv  header=True
+     [Return]  ${orders}
+
+***Keywords***
+Fill and submit order for one person
+    [Arguments]  ${orders}
+    Select From List By Value    //select[@name="head"]  ${orders}[Head]
+    Click Element    //input[@value="${orders}[Body]"]
+    Input Text  //input[@placeholder="Enter the part number for the legs"]  ${orders}[Legs]
+    Input Text    address  ${orders}[Address]
+
+
+*** Keywords ***
+Preview Button
+        Click Button    id:preview
+
+*** Keywords ***
+ORDER
+    Click Button       order
+    Page Should Contain Element    receipt
+
+***Keywords***
+Submit another
+    Click Button      order-another
+    Bypass Order Form
+
+***Keywords***
+Store the receipt as a PDF file
+    [Arguments]  ${orders}
+    ${path}=  Set Variable  ${orders_folder}${/}${orders}[Order number].pdf
+    ${receipt_data}=  Get Element Attribute    //div[@id="receipt"]    outerHTML
+    Html To Pdf    ${receipt_data}    ${path}
+    [Return]  ${path}
+
+***Keywords***
+Take a Screenshot of the Robot
+    [Arguments]  ${orders}
+    Screenshot  robot-preview-image  ${OUTPUT_DIR}${/}preview${/} ${orders}[Order number].png
+
+***Keywords***
+Embed
+    Add Watermark Image To Pdf    ${OUTPUT_DIR}${/}preview${/}${orders}[Order number].png    ${OUTPUT_DIR}${/}receipts${/} ${orders}[Order number].pdf
+
+# +
+#${OUTPUT_DIR}${/}receipt_results.pdf
+#${OUTPUT_DIR}${/}robot_preview.png
+#${OUTPUT_DIR}${/}pdf_files${/}${orders}[Order number].pdf
+# -
+
+*** Tasks ***
+Order robots from RobotSpareBin Industries Inc
+    Open the intranet website
+    Bypass Order Form
+    Dowload Order Files
+    ${orders}=  Read order Files
+        FOR  ${row}  IN  @{orders} 
+            Fill and submit order for one person    ${row}
+            Preview Button
+            Wait Until Keyword Succeeds    12x    2 sec    ORDER 
+            ${path}=  Store the receipt as a PDF file  ${orders}[Order number]
+            #Store the receipt as a PDF file    ${orders}
+            Take a Screenshot of the Robot  ${orders}
+            #Embed
+            Submit another
+        END  
+
+
